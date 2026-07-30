@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Daten
+data/pdf/*
+data/processed/*
+data/exports/*
+
+# Vector DB
+database/*
+
+# Umgebungsvariablen
+.env
