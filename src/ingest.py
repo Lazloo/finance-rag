@@ -1,6 +1,6 @@
 from pathlib import Path
-import fitz
-
+import pdfplumber
+import json
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -8,47 +8,50 @@ PDF_DIR = PROJECT_ROOT / "data" / "pdf"
 OUTPUT_DIR = PROJECT_ROOT / "data" / "processed"
 
 
-def extract_pdf_text(pdf_path: Path) -> str:
-    """Extrahiert den kompletten Text einer PDF."""
+def extract_pdf(pdf_file: Path):
 
-    text = []
+    pages = []
 
-    with fitz.open(pdf_path) as doc:
-        for page in doc:
-            page_text = page.get_text("text")
-            text.append(page_text)
+    with pdfplumber.open(pdf_file) as pdf:
 
-    return "\n".join(text)
+        print(f"{pdf_file.name}: {len(pdf.pages)} Seiten")
+
+        for page_number, page in enumerate(pdf.pages, start=1):
+
+            text = page.extract_text() or ""
+
+            tables = page.extract_tables()
+
+            pages.append(
+                {
+                    "page": page_number,
+                    "text": text,
+                    "tables": tables,
+                }
+            )
+
+    return pages
 
 
-def save_text(text: str, pdf_path: Path):
-    """Speichert den extrahierten Text."""
+def save_json(pdf_file: Path, pages):
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    output_file = OUTPUT_DIR / f"{pdf_path.stem}.txt"
+    output_file = OUTPUT_DIR / f"{pdf_file.stem}.json"
 
-    output_file.write_text(text, encoding="utf-8")
+    with open(output_file, "w", encoding="utf-8") as f:
 
-    print(f"✓ Gespeichert: {output_file.name}")
+        json.dump(
+            pages,
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
 
-
-def process_pdf(pdf_path: Path):
-
-    print(f"Lese: {pdf_path.name}")
-
-    text = extract_pdf_text(pdf_path)
-
-    print(f"  Zeichen: {len(text)}")
-
-    save_text(text, pdf_path)
+    print(f"Gespeichert: {output_file}")
 
 
 def main():
-
-    if not PDF_DIR.exists():
-        print("Ordner data/pdf existiert nicht.")
-        return
 
     pdfs = sorted(PDF_DIR.glob("*.pdf"))
 
@@ -56,12 +59,11 @@ def main():
         print("Keine PDFs gefunden.")
         return
 
-    print(f"{len(pdfs)} PDF(s) gefunden.\n")
-
     for pdf in pdfs:
-        process_pdf(pdf)
 
-    print("\nFertig.")
+        pages = extract_pdf(pdf)
+
+        save_json(pdf, pages)
 
 
 if __name__ == "__main__":
