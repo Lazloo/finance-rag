@@ -28,9 +28,8 @@ for t in transactions[:10]:
 
 export_csv(
     transactions,
-    Path("database/comdirect.csv")
+    Path("data/exports/comdirect.csv")
 )
 
 print()
-
 print("CSV geschrieben.")
