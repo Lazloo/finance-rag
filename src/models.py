@@ -10,4 +10,8 @@ class Transaction:
     merchant: str
     amount: float
     description: str
-    reference: str | None = None
+
+    normalized_type: str = "unknown"
+    is_internal_transfer: bool = False
+    category: str | None = None
+    subcategory: str | None = None

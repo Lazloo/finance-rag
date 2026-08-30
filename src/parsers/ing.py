@@ -3,11 +3,13 @@ from __future__ import annotations
 import re
 
 from models import Transaction
-from utils.money import parse_amount, AMOUNT_PATTERN
 from parsers.base import lines
+from utils.money import parse_amount, AMOUNT_PATTERN
 
 
-DATE_PATTERN = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+DATE_PATTERN = re.compile(
+    r"^\d{2}\.\d{2}\.\d{4}$"
+)
 
 
 class INGParser:
@@ -20,51 +22,61 @@ class INGParser:
 
             for block in page["blocks"]:
 
-                block_lines = lines(block["text"])
+                block_lines = lines(
+                    block["text"]
+                )
+
+                # Eine ING-Buchung benötigt mindestens:
+                #
+                # 1. Buchungsdatum
+                # 2. Buchung / Empfänger
+                # 3. Betrag
 
                 if len(block_lines) < 3:
                     continue
 
-                # Eine ING-Buchung beginnt mit einem Datum
-                if not DATE_PATTERN.match(block_lines[0]):
+                # Erste Zeile muss Datum sein
+                if not DATE_PATTERN.match(
+                    block_lines[0]
+                ):
                     continue
 
-                # Suche den Betrag
-                amount_index = None
+                # -------------------------------------------------
+                # Betrag muss die dritte Zeile sein
+                # -------------------------------------------------
 
-                for i, line in enumerate(block_lines):
+                amount_text = block_lines[2]
 
-                    if AMOUNT_PATTERN.fullmatch(line):
-                        amount_index = i
-                        break
-
-                if amount_index is None:
+                if not AMOUNT_PATTERN.fullmatch(
+                    amount_text
+                ):
                     continue
-
-                # Für das ING-Format erwarten wir:
-                #
-                # Datum
-                # Buchung + Empfänger
-                # Betrag
-                # Valuta
-                # Verwendungszweck
 
                 booking_date = block_lines[0]
 
                 booking_line = block_lines[1]
 
                 amount = parse_amount(
-                    block_lines[amount_index]
+                    amount_text
                 )
+
+                # -------------------------------------------------
+                # Valuta
+                # -------------------------------------------------
 
                 value_date = None
 
-                # Valuta steht nach dem Betrag normalerweise
-                if amount_index + 1 < len(block_lines):
-                    possible_date = block_lines[amount_index + 1]
+                if (
+                    len(block_lines) > 3
+                    and DATE_PATTERN.match(
+                        block_lines[3]
+                    )
+                ):
+                    value_date = block_lines[3]
 
-                    if DATE_PATTERN.match(possible_date):
-                        value_date = possible_date
+                # -------------------------------------------------
+                # Transaktionstyp / Händler
+                # -------------------------------------------------
 
                 transaction_type, merchant = (
                     self.parse_booking_line(
@@ -72,9 +84,11 @@ class INGParser:
                     )
                 )
 
-                description_lines = block_lines[
-                    amount_index + 2:
-                ]
+                # -------------------------------------------------
+                # Verwendungszweck
+                # -------------------------------------------------
+
+                description_lines = block_lines[4:]
 
                 description = " ".join(
                     description_lines
@@ -94,24 +108,40 @@ class INGParser:
 
         return transactions
 
-    def parse_booking_line(self, text):
+    def parse_booking_line(
+        self,
+        text: str,
+    ):
 
         transaction_type = ""
 
         if text.startswith("Lastschrift"):
             transaction_type = "Lastschrift"
 
-        elif text.startswith("Gutschrift/Dauerauftrag"):
-            transaction_type = "Gutschrift/Dauerauftrag"
+        elif text.startswith(
+            "Gutschrift/Dauerauftrag"
+        ):
+            transaction_type = (
+                "Gutschrift/Dauerauftrag"
+            )
 
         elif text.startswith("Gutschrift"):
             transaction_type = "Gutschrift"
 
+        elif text.startswith(
+            "Dauerauftrag/Terminueberw."
+        ):
+            transaction_type = "Dauerauftrag"
+
         elif text.startswith("Dauerauftrag"):
             transaction_type = "Dauerauftrag"
 
-        elif text.startswith("Echtzeitüberweisung"):
-            transaction_type = "Echtzeitüberweisung"
+        elif text.startswith(
+            "Echtzeitüberweisung"
+        ):
+            transaction_type = (
+                "Echtzeitüberweisung"
+            )
 
         elif text.startswith("Ueberweisung"):
             transaction_type = "Überweisung"
@@ -119,7 +149,6 @@ class INGParser:
         elif text.startswith("Entgelt"):
             transaction_type = "Entgelt"
 
-        # Der Händler steht normalerweise hinter dem Vorgang
         merchant = text
 
         prefixes = [
@@ -137,7 +166,11 @@ class INGParser:
 
             if text.startswith(prefix):
 
-                merchant = text[len(prefix):].strip()
+                merchant = (
+                    text[len(prefix):]
+                    .strip()
+                )
+
                 break
 
         return transaction_type, merchant

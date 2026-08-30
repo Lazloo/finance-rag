@@ -1,44 +1,40 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
 from pathlib import Path
-import csv
 
 from models import Transaction
 
 
-def export_csv(transactions: list[Transaction], filename: Path):
+def export_json(
+    transactions: list[Transaction],
+    filename: Path,
+) -> None:
+    """
+    Speichert Transaktionen als JSON.
+    """
 
-    filename.parent.mkdir(parents=True, exist_ok=True)
+    filename.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    with open(
-        filename,
-        "w",
-        newline="",
-        encoding="utf-8"
-    ) as f:
+    data = [
+        asdict(transaction)
+        for transaction in transactions
+    ]
 
-        writer = csv.writer(f)
+    filename.write_text(
+        json.dumps(
+            data,
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
 
-        writer.writerow(
-            [
-                "bank",
-                "booking_date",
-                "value_date",
-                "transaction_type",
-                "merchant",
-                "amount",
-                "description",
-            ]
-        )
-
-        for t in transactions:
-
-            writer.writerow(
-                [
-                    t.bank,
-                    t.booking_date,
-                    t.value_date,
-                    t.transaction_type,
-                    t.merchant,
-                    t.amount,
-                    t.description.replace("\n", " "),
-                ]
-            )
+    print(
+        f"{len(transactions)} Transaktionen gespeichert: "
+        f"{filename}"
+    )
