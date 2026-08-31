@@ -543,6 +543,30 @@ def main() -> None:
         for transaction in unknown_transactions:
             print_transaction(transaction)
 
+    print("\nKI-Klassifizierungen:")
+
+    llm_transactions = [
+        transaction
+        for transaction in transactions
+        if transaction.get("category_source") == "ollama"
+    ]
+
+    if not llm_transactions:
+        print("  Keine.")
+
+    else:
+        for transaction in llm_transactions:
+            print(
+                f"  {transaction['booking_date']} | "
+                f"{transaction['merchant'][:40]} | "
+                f"{transaction['category']} | "
+                f"Confidence: "
+                f"{transaction['category_confidence']:.2f}"
+            )
+            print(
+                f"    {transaction.get('category_reason', '')}"
+            )
+
 
 if __name__ == "__main__":
     main()

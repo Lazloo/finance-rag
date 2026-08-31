@@ -13,5 +13,10 @@ class Transaction:
 
     normalized_type: str = "unknown"
     is_internal_transfer: bool = False
+
     category: str | None = None
     subcategory: str | None = None
+
+    category_source: str = "unclassified"
+    category_confidence: float | None = None
+    category_reason: str | None = None

@@ -1,5 +1,5 @@
 from pathlib import Path
-
+from llm_categorizer import apply_llm_category
 from categories import categorize_transaction
 from exporter import export_json
 from parsers.dispatcher import BankDispatcher
@@ -80,6 +80,39 @@ def main():
                 categorize_transaction(transaction)
                 for transaction in transactions
             ]
+
+            # -------------------------------------------------
+            # Unbekannte Ausgaben durch Ollama klassifizieren
+            # -------------------------------------------------
+
+            for transaction in transactions:
+
+                if (
+                    transaction.normalized_type == "expense"
+                    and transaction.category == "Sonstiges"
+                ):
+                    print(
+                        f"Ollama analysiert: "
+                        f"{transaction.merchant}"
+                    )
+
+                    try:
+                        apply_llm_category(
+                            transaction
+                        )
+
+                    except Exception as exc:
+                        print(
+                            f"Ollama-Fehler bei "
+                            f"{transaction.merchant}: "
+                            f"{exc}"
+                        )
+
+                        transaction.category_source = "ollama"
+                        transaction.category_confidence = 0.0
+                        transaction.category_reason = (
+                            f"Fehler bei Ollama: {exc}"
+                        )
 
             # -------------------------------------------------
             # Zur Gesamtliste hinzufügen

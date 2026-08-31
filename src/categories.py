@@ -71,6 +71,9 @@ CATEGORY_RULES = {
         "buch und spielkiste",
         "spielkiste",
         "ernstings",
+        "paenz",
+        "pä nz",
+        "piepmatz",
     ],
 
     "Mobilität": [
@@ -137,6 +140,7 @@ CATEGORY_RULES = {
         "adler modemärkte",
         "adler modemaerkte",
         "h&m",
+        "h+m",
         "h+ m",
         "kik",
         "ernstings",
@@ -216,62 +220,98 @@ def build_search_text(
     ).lower()
 
 
+def set_category(
+    transaction: Transaction,
+    category: str,
+    subcategory: str,
+    reason: str,
+) -> Transaction:
+    """
+    Setzt eine regelbasierte Kategorie.
+    """
+
+    transaction.category = category
+    transaction.subcategory = subcategory
+    transaction.category_source = "rule"
+    transaction.category_confidence = 1.0
+    transaction.category_reason = reason
+
+    return transaction
+
+
 def categorize_transaction(
     transaction: Transaction,
 ) -> Transaction:
-    """
-    Weist einer Transaktion eine Kategorie zu.
-    """
 
     normalized_type = transaction.normalized_type
 
-    # =====================================================
-    # Finanzielle Kategorien
-    # =====================================================
-
     if normalized_type == "income":
-        transaction.category = "Einkommen"
-        transaction.subcategory = "Sonstiges Einkommen"
-        return transaction
+        return set_category(
+            transaction,
+            "Einkommen",
+            "Sonstiges Einkommen",
+            "Einnahme anhand der Finanzregeln erkannt.",
+        )
 
     if normalized_type == "refund":
-        transaction.category = "Rückerstattung"
-        transaction.subcategory = "Erstattung"
-        return transaction
+        return set_category(
+            transaction,
+            "Rückerstattung",
+            "Erstattung",
+            "Rückerstattung anhand der Finanzregeln erkannt.",
+        )
 
     if normalized_type == "savings":
-        transaction.category = "Sparen"
-        transaction.subcategory = "Spartransfer"
-        return transaction
+        return set_category(
+            transaction,
+            "Sparen",
+            "Spartransfer",
+            "Spartransfer anhand der Finanzregeln erkannt.",
+        )
 
     if normalized_type == "loan_payment":
-        transaction.category = "Hausdarlehen"
-        transaction.subcategory = "Darlehenszahlung"
-        return transaction
+        return set_category(
+            transaction,
+            "Hausdarlehen",
+            "Darlehenszahlung",
+            "Darlehenszahlung anhand des Verwendungszwecks erkannt.",
+        )
 
     if normalized_type == "fee":
-        transaction.category = "Gebühren"
-        transaction.subcategory = "Bankgebühr"
-        return transaction
+        return set_category(
+            transaction,
+            "Gebühren",
+            "Bankgebühr",
+            "Gebühr anhand des Transaktionstyps erkannt.",
+        )
 
     if normalized_type == "transfer_in":
-        transaction.category = "Interner Transfer"
-        transaction.subcategory = "Transfer Eingang"
-        return transaction
+        return set_category(
+            transaction,
+            "Interner Transfer",
+            "Transfer Eingang",
+            "Interner Eingang anhand der Finanzregeln erkannt.",
+        )
 
     if normalized_type == "transfer_out":
-        transaction.category = "Interner Transfer"
-        transaction.subcategory = "Transfer Ausgang"
-        return transaction
+        return set_category(
+            transaction,
+            "Interner Transfer",
+            "Transfer Ausgang",
+            "Interner Ausgang anhand der Finanzregeln erkannt.",
+        )
 
     if normalized_type == "unknown_inflow":
-        transaction.category = "Unbekannter Eingang"
-        transaction.subcategory = "Noch zu prüfen"
-        return transaction
+        return set_category(
+            transaction,
+            "Unbekannter Eingang",
+            "Noch zu prüfen",
+            "Herkunft des Eingangs konnte nicht sicher bestimmt werden.",
+        )
 
-    # =====================================================
+    # -----------------------------------------------------
     # Normale Ausgaben
-    # =====================================================
+    # -----------------------------------------------------
 
     text = build_search_text(transaction)
 
@@ -281,16 +321,21 @@ def categorize_transaction(
 
             if keyword in text:
 
-                transaction.category = category
-                transaction.subcategory = category
+                return set_category(
+                    transaction,
+                    category,
+                    category,
+                    f"Schlüsselwort-Regel erkannt: {keyword}",
+                )
 
-                return transaction
-
-    # =====================================================
-    # Noch nicht erkannt
-    # =====================================================
+    # -----------------------------------------------------
+    # Keine Regel gefunden
+    # -----------------------------------------------------
 
     transaction.category = "Sonstiges"
     transaction.subcategory = "Noch zu prüfen"
+    transaction.category_source = "unclassified"
+    transaction.category_confidence = None
+    transaction.category_reason = None
 
     return transaction

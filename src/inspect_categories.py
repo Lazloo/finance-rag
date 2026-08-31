@@ -22,7 +22,7 @@ def main():
         for transaction in data
         if (
             transaction.get("normalized_type") == "expense"
-            and transaction.get("category") == "Mobilität"
+            and transaction.get("category") == "Sonstiges"
         )
     ]
 
