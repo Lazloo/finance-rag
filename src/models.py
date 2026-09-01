@@ -20,3 +20,5 @@ class Transaction:
     category_source: str = "unclassified"
     category_confidence: float | None = None
     category_reason: str | None = None
+
+    merchant_normalized: str | None = None

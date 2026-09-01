@@ -5,6 +5,7 @@ from exporter import export_json
 from parsers.dispatcher import BankDispatcher
 from pdf.extractor import extract_blocks
 from transaction_rules import normalize_transaction
+from merchant_normalizer import normalize_merchant
 
 
 PDF_DIR = Path("data/pdf")
@@ -72,9 +73,10 @@ def main():
                 for transaction in transactions
             ]
 
-            # -------------------------------------------------
-            # Kategorie bestimmen
-            # -------------------------------------------------
+            transactions = [
+                normalize_merchant(transaction)
+                for transaction in transactions
+            ]
 
             transactions = [
                 categorize_transaction(transaction)
@@ -82,41 +84,50 @@ def main():
             ]
 
             # -------------------------------------------------
-            # Unbekannte Ausgaben durch Ollama klassifizieren
+            # Kategorie bestimmen
             # -------------------------------------------------
 
-            for transaction in transactions:
+            # transactions = [
+            #     categorize_transaction(transaction)
+            #     for transaction in transactions
+            # ]
 
-                if (
-                    transaction.normalized_type == "expense"
-                    and transaction.category == "Sonstiges"
-                ):
-                    print(
-                        f"Ollama analysiert: "
-                        f"{transaction.merchant}"
-                    )
+            # # -------------------------------------------------
+            # # Unbekannte Ausgaben durch Ollama klassifizieren
+            # # -------------------------------------------------
 
-                    try:
-                        apply_llm_category(
-                            transaction
-                        )
+            # for transaction in transactions:
 
-                    except Exception as exc:
-                        print(
-                            f"Ollama-Fehler bei "
-                            f"{transaction.merchant}: "
-                            f"{exc}"
-                        )
+            #     if (
+            #         transaction.normalized_type == "expense"
+            #         and transaction.category == "Sonstiges"
+            #     ):
+            #         print(
+            #             f"Ollama analysiert: "
+            #             f"{transaction.merchant}"
+            #         )
 
-                        transaction.category_source = "ollama"
-                        transaction.category_confidence = 0.0
-                        transaction.category_reason = (
-                            f"Fehler bei Ollama: {exc}"
-                        )
+            #         try:
+            #             apply_llm_category(
+            #                 transaction
+            #             )
 
-            # -------------------------------------------------
-            # Zur Gesamtliste hinzufügen
-            # -------------------------------------------------
+            #         except Exception as exc:
+            #             print(
+            #                 f"Ollama-Fehler bei "
+            #                 f"{transaction.merchant}: "
+            #                 f"{exc}"
+            #             )
+
+            #             transaction.category_source = "ollama"
+            #             transaction.category_confidence = 0.0
+            #             transaction.category_reason = (
+            #                 f"Fehler bei Ollama: {exc}"
+            #             )
+
+            # # -------------------------------------------------
+            # # Zur Gesamtliste hinzufügen
+            # # -------------------------------------------------
 
             all_transactions.extend(
                 transactions

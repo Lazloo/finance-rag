@@ -32,10 +32,16 @@ CATEGORY_RULES = {
         "büsch fil",
         "buesch fil",
         "kamps",
-        "landbaeckerei stinges",
+        "backerei",
+        "bäckerei",
+        "backhaus",
+        "bäcker",
+        "stadtbäckerei",
+        "stadtbaeckerei",
+        "getraenke-quelle",
+        "getränke-quelle",
+        "landbaeckerei",
         "stinges",
-        "supermarkt",
-        "lebensmittel",
     ],
 
     "Drogerie": [
@@ -85,7 +91,9 @@ CATEGORY_RULES = {
         "deutsche tamoil",
         "tamoil",
         "auto service",
+        "sb tanktreff",
         "autowerkstatt",
+        "auto service",
         "parking",
         "parkg.",
         "parkgebühr",
@@ -132,6 +140,7 @@ CATEGORY_RULES = {
         "pizza",
         "eiscafe",
         "eiscafé",
+        "brauhaus",
         "cafe ",
         "café ",
     ],
@@ -146,6 +155,9 @@ CATEGORY_RULES = {
         "ernstings",
         "oellers schuhhaus",
         "schuhhaus",
+        "cecil",
+        "jeans fritz",
+        "nkd",
     ],
 
     "Haushalt": [
@@ -154,12 +166,14 @@ CATEGORY_RULES = {
         "tedi",
         "action germany",
         "action",
+        "hagebau",
     ],
 
     "Hobby & Freizeit": [
+        "glehner turnverein",
+        "turnverein",
+        "verein",
         "creativ shop",
-        "nanu-nana",
-        "nanu nana",
     ],
 
     "Shopping": [
@@ -208,17 +222,30 @@ def build_search_text(
     transaction: Transaction,
 ) -> str:
     """
-    Kombiniert alle relevanten Textfelder.
+    Kombiniert normalisierten Händler,
+    Original-Händler, Transaktionstyp und Verwendungszweck.
     """
 
     return " ".join(
         [
-            str(transaction.merchant or ""),
-            str(transaction.transaction_type or ""),
-            str(transaction.description or ""),
+            str(
+                transaction.merchant_normalized
+                or ""
+            ),
+            str(
+                transaction.merchant
+                or ""
+            ),
+            str(
+                transaction.transaction_type
+                or ""
+            ),
+            str(
+                transaction.description
+                or ""
+            ),
         ]
     ).lower()
-
 
 def set_category(
     transaction: Transaction,
