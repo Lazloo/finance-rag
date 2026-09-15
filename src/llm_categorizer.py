@@ -4,81 +4,220 @@ import json
 
 import ollama
 
-from models import Transaction
+from text_cleaner import clean_transaction_text
+from vector_store import hybrid_search
 
 
-LLM_MODEL = "qwen2.5:3b"
+LLM_MODEL = "qwen2.5:7b"
 
 
 CATEGORIES = [
     "Lebensmittel",
+    "Shopping",
+    "Telekommunikation",
+    "Sonstiges",
     "Drogerie",
-    "Gesundheit",
     "Kinder",
+    "Glücksspiel",
     "Mobilität",
     "Wohnen",
-    "Telekommunikation",
-    "Reisen",
-    "Essen außer Haus",
-    "Kleidung & Schuhe",
+    "Gesundheit",
     "Haushalt",
-    "Hobby & Freizeit",
-    "Shopping",
+    "Kleidung & Schuhe",
+    "Essen außer Haus",
     "Abos & Software",
     "Behörden & Abgaben",
+    "Hobby & Freizeit",
+    "Reisen",
     "Rundfunkbeitrag",
-    "Glücksspiel",
-    "Sonstiges",
 ]
 
 
-def classify_with_ollama(
-    transaction: Transaction,
-) -> dict:
-    """
-    Klassifiziert eine unbekannte Transaktion mit Ollama.
-    """
+def build_transaction_text(transaction: dict) -> str:
+    merchant = (
+        transaction.get("merchant_normalized")
+        or transaction.get("merchant")
+        or ""
+    )
 
-    prompt = f"""
-Du bist ein Assistent zur Klassifizierung privater
-Kontobewegungen.
+    description = clean_transaction_text(
+        transaction.get("description", "")
+    )
 
-Analysiere die folgende Transaktion.
+    amount = transaction.get("amount", 0)
 
-Händler:
-{transaction.merchant}
+    return (
+        f"Händler: {merchant}\n"
+        f"Verwendungszweck: {description}\n"
+        f"Betrag: {amount:.2f} EUR"
+    )
 
-Transaktionstyp:
-{transaction.transaction_type}
 
-Betrag:
-{transaction.amount:.2f} EUR
+def build_rag_context(results: dict) -> str:
+    lines = []
 
-Verwendungszweck:
-{transaction.description or "Nicht vorhanden"}
+    exact_matches = results.get("exact", [])
+    semantic_matches = results.get("semantic", [])
 
-Erlaubte Kategorien:
-{json.dumps(CATEGORIES, ensure_ascii=False)}
+    if exact_matches:
+        lines.append(
+            "Historische Transaktionen desselben Händlers:"
+        )
 
-Regeln:
+        for match in exact_matches[:8]:
+            lines.append(
+                "- "
+                f"{match.get('merchant')} | "
+                f"{match.get('category')} | "
+                f"{match.get('subcategory') or ''} | "
+                f"{match.get('amount', 0):.2f} EUR"
+            )
 
-1. Wähle genau eine Kategorie aus der Liste.
-2. Erfinde keinen Händler.
-3. Verwende "Sonstiges", wenn die vorhandenen Daten keine
-   zuverlässige Zuordnung erlauben.
-4. confidence muss zwischen 0 und 1 liegen.
-5. confidence beschreibt deine Sicherheit bezüglich der Kategorie.
-6. Antworte ausschließlich als JSON.
+        return "\n".join(lines)
 
-Erwartetes Format:
+    if semantic_matches:
+        relevant_matches = [
+            match
+            for match in semantic_matches
+            if match.get("distance", 999) <= 0.50
+        ]
+
+        if not relevant_matches:
+            return (
+                "Keine ausreichend ähnlichen historischen "
+                "Transaktionen gefunden."
+            )
+
+        lines.append(
+            "Semantisch ähnliche historische Transaktionen:"
+        )
+
+        for match in relevant_matches[:6]:
+            lines.append(
+                "- "
+                f"{match.get('merchant')} | "
+                f"{match.get('category')} | "
+                f"{match.get('subcategory') or ''} | "
+                f"Distanz: {match.get('distance', 0):.4f}"
+            )
+
+        return "\n".join(lines)
+
+    return (
+        "Keine passenden historischen Transaktionen "
+        "gefunden."
+    )
+
+
+def build_prompt(
+    transaction: dict,
+    rag_context: str,
+) -> str:
+    transaction_text = build_transaction_text(
+        transaction
+    )
+
+    categories_text = "\n".join(
+        f"- {category}"
+        for category in CATEGORIES
+    )
+
+    return f"""
+Du kategorisierst private Banktransaktionen.
+
+Ordne die folgende Ausgabe genau EINER Kategorie zu.
+
+Mögliche Kategorien:
+{categories_text}
+
+WICHTIGE REGELN:
+
+1. Analysiere zuerst Händler und Verwendungszweck der aktuellen
+   Transaktion.
+
+2. Der Verwendungszweck ist besonders wichtig.
+   Er kann den tatsächlichen Geschäftszweck des Händlers
+   enthalten, auch wenn der Händlername nur ein Zahlungsdienstleister
+   oder ein technischer Name ist.
+
+3. Historische Transaktionen dienen nur als zusätzlicher Kontext.
+   Übernimm deren Kategorie NICHT automatisch.
+
+4. Wenn historische Beispiele nicht zur aktuellen Transaktion
+   passen, ignoriere sie.
+
+5. Erfinde keine Informationen und keine Händleraktivitäten.
+
+6. Wenn die aktuelle Transaktion aufgrund ihres Händlers oder
+   Verwendungszwecks ausreichend eindeutig ist, kategorisiere sie
+   direkt.
+
+7. Verwende "Sonstiges" nur dann, wenn die aktuelle Transaktion
+   tatsächlich keiner der vorhandenen Kategorien zuverlässig
+   zugeordnet werden kann.
+
+8. Die Begründung darf sich ausschließlich auf Informationen
+   beziehen, die in der aktuellen Transaktion oder den angegebenen
+   historischen Beispielen enthalten sind.
+
+9. Gib ausschließlich gültiges JSON zurück.
+
+10. Die Kategorie muss exakt einer der vorgegebenen Kategorien
+    entsprechen.
+
+AKTUELLE TRANSAKTION:
+
+{transaction_text}
+
+HISTORISCHE BEISPIELE:
+
+{rag_context}
+
+Antworte exakt in diesem Format:
 
 {{
-  "category": "Lebensmittel",
-  "subcategory": "Beispiel",
-  "confidence": 0.85,
-  "reason": "Kurze Begründung"
+  "category": "Kategorie aus der Liste",
+  "subcategory": "kurze Unterkategorie",
+  "confidence": 0.0,
+  "reason": "kurze Begründung ausschließlich anhand der vorhandenen Informationen"
 }}
-"""
+""".strip()
+
+
+def categorize_transaction_with_rag(
+    transaction: dict,
+    collection,
+) -> dict:
+    """
+    Kategorisiert eine Transaktion mit RAG + Qwen.
+    """
+
+    query = (
+        transaction.get("merchant_normalized")
+        or transaction.get("merchant")
+        or ""
+    )
+
+    description = clean_transaction_text(
+        transaction.get("description", "")
+    )
+
+    if description:
+        query = f"{query} {description}"
+
+    results = hybrid_search(
+        collection,
+        query,
+        exact_limit=8,
+        semantic_limit=8,
+    )
+
+    rag_context = build_rag_context(results)
+
+    prompt = build_prompt(
+        transaction,
+        rag_context,
+    )
 
     response = ollama.chat(
         model=LLM_MODEL,
@@ -89,78 +228,47 @@ Erwartetes Format:
             }
         ],
         format="json",
+        options={
+            "temperature": 0,
+        },
     )
 
     content = response["message"]["content"]
 
-    result = json.loads(content)
+    try:
+        result = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "LLM hat kein gültiges JSON zurückgegeben:\n"
+            f"{content}"
+        ) from exc
 
-    return result
+    category = result.get("category")
 
-
-def apply_llm_category(
-    transaction: Transaction,
-) -> Transaction:
-    """
-    Klassifiziert eine Transaktion mit Ollama.
-
-    Bei geringer Sicherheit bleibt die Kategorie Sonstiges.
-    """
-
-    result = classify_with_ollama(
-        transaction
-    )
-
-    category = result.get(
-        "category",
-        "Sonstiges",
-    )
-
-    subcategory = result.get(
-        "subcategory",
-        "",
-    )
-
-    confidence = float(
-        result.get(
-            "confidence",
-            0.0,
-        )
-    )
-
-    reason = result.get(
-        "reason",
-        "",
-    )
-
-    # Sicherheit auf gültigen Bereich begrenzen
-    confidence = max(
-        0.0,
-        min(1.0, confidence),
-    )
-
-    # Nur erlaubte Kategorien akzeptieren
     if category not in CATEGORIES:
-        category = "Sonstiges"
-
-    transaction.category_source = "ollama"
-    transaction.category_confidence = confidence
-    transaction.category_reason = reason
-
-    # Unterhalb dieser Schwelle keine automatische
-    # Umklassifizierung.
-    if confidence >= 0.75:
-        transaction.category = category
-        transaction.subcategory = (
-            subcategory or "KI-Klassifizierung"
+        raise RuntimeError(
+            f"LLM hat ungültige Kategorie geliefert: "
+            f"{category!r}"
         )
-    else:
-        transaction.category = "Sonstiges"
-        transaction.subcategory = "Manuelle Prüfung"
 
-    return transaction
+    confidence = result.get("confidence")
 
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        confidence = None
 
-if __name__ == "__main__":
-    print("Ollama-Kategorisierer bereit.")
-    print(f"Modell: {LLM_MODEL}")
+    return {
+        "category": category,
+        "subcategory": result.get("subcategory"),
+        "confidence": confidence,
+        "reason": result.get("reason", ""),
+        "rag_match_type": results.get(
+            "match_type"
+        ),
+        "rag_matches": (
+            results.get("exact")
+            or results.get("semantic")
+            or []
+        ),
+    }
